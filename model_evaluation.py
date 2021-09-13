@@ -88,6 +88,8 @@ class model_evaluation():
             ax.plot(fg.freqs, psd, alpha=0.1, linewidth=1, color=c)
             # Mark the peak frequencies
             peak_freq = results.alpha_peak_freqs[n]
+            if np.isnan(peak_freq):
+                continue
             ax.scatter(peak_freq, psd[np.isclose(fg.freqs,peak_freq)], marker='x', alpha=0.5, s=10, color=c)
         # color freq band
         ylim = ax.get_ylim()

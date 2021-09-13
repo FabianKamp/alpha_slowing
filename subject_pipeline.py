@@ -131,6 +131,10 @@ class subject_pipeline():
             # Mask for the freq range
             m_psd = psd[freq_mask]
             peak_idxs = find_peaks(m_psd)[0]
+            # if no peak is found append nan
+            if len(peak_idxs)==0:
+                peak_freqs.append(np.nan)
+                continue
             max_peak = np.max(m_psd[peak_idxs])
             peak_freqs.append(m_freqs[m_psd==max_peak][0])
         return peak_freqs
