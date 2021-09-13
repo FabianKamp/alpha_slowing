@@ -25,12 +25,12 @@ def despine(ax):
     ax.spines['bottom'].set_bounds((xmin, xmax))
 
 # Boxplot of alpha peaks
-def plot_group_peak_cf(results, meta_file, fig, show_subjects=False):
+def plot_group_box(results, meta_file, param, fig, show_subjects=False):
     meta_data = load_meta_data(meta_file)
     # Set up young and old group
     young = meta_data.loc[(meta_data.id.isin(results.id))&(meta_data.age_bin<=4), 'id']
     old = meta_data.loc[(meta_data.id.isin(results.id))&(meta_data.age_bin>=5), 'id']
-    results = results.dropna(subset=['alpha_peak_cf']) 
+    results = results.dropna(subset=[param]) 
 
     # Get axes
     ax = fig.get_axes()[0]
@@ -38,7 +38,7 @@ def plot_group_peak_cf(results, meta_file, fig, show_subjects=False):
     # Set up data + positions for the boxplot
     if show_subjects:
         positions = np.hstack([np.linspace(0.,0.4,len(young)), np.linspace(0.6,1,len(old))])
-        data = [results.loc[results.id==sub, 'alpha_peak_cf'] for sub in young] + [results.loc[results.id==sub, 'alpha_peak_cf'] for sub in old]
+        data = [results.loc[results.id==sub, param] for sub in young] + [results.loc[results.id==sub, param] for sub in old]
         sensor_pos = [results.loc[results.id==sub, 'sensor_pos_a'] for sub in young] + [results.loc[results.id==sub, 'sensor_pos_a'] for sub in old]
         box_kwargs = dict(widths=0.02, medianprops=dict(linewidth=2., color='k'))
         ticklabel_kwargs = dict(labels = young.to_list()+old.to_list(), rotation=90)
@@ -48,7 +48,7 @@ def plot_group_peak_cf(results, meta_file, fig, show_subjects=False):
 
     else:     
         positions=[0.2,0.8]
-        data = [results.loc[results.id.isin(young),'alpha_peak_cf'], results.loc[results.id.isin(old),'alpha_peak_cf']]
+        data = [results.loc[results.id.isin(young),param], results.loc[results.id.isin(old),param]]
         sensor_pos = [results.loc[results.id.isin(young),'sensor_pos_a'],results.loc[results.id.isin(old),'sensor_pos_a']]
         box_kwargs = dict(widths=0.05, medianprops=dict(linewidth=2., color='k'))
         ticklabel_kwargs = dict(labels = ['Young', 'Old'])
@@ -59,7 +59,7 @@ def plot_group_peak_cf(results, meta_file, fig, show_subjects=False):
         xlim = (-0.1,1.1)
     
     # Boxplot
-    ax.boxplot(data, positions=positions, showcaps=False, showfliers=False, notch=True, **box_kwargs);
+    ax.boxplot(data, positions=positions, showcaps=False, showfliers=False, notch=False, **box_kwargs);
     # Scatter    
     scatter_params = {'s':20, 'alpha':0.2}
     for pos, d, sensor in zip(positions,data,sensor_pos):

@@ -1,6 +1,7 @@
 import mne
 import numpy as np
 import pandas as pd
+from scipy.signal import find_peaks, gaussian
 from fooof import FOOOFGroup
 from fooof.analysis.periodic import get_band_peak
 
@@ -112,19 +113,26 @@ class subject_pipeline():
         psds, freqs = mne.time_frequency.psd_welch(raw, n_fft=n_fft, n_overlap=n_overlap, window=window_type, average='mean')
         return freqs, psds
 
-    def get_peak_freqs(self, freqs, psds, freq_range):
+    def get_peak_freqs(self, freqs, psds, freq_range, smooth=True):
         """
         Return the frequency with maximal power within freq range.
         """
-        # Mask for the freq range
-        freq_mask = (freqs>=freq_range[0])&(freqs<=freq_range[1])
-        m_psds = psds[:, freq_mask]
+        log_psds = np.log10(psds) 
+        # Freq mask
+        freq_mask = (freqs>=freq_range[0])&(freqs<=freq_range[1]) 
         m_freqs = freqs[freq_mask]
         # Iterate over channels and get frequency with max log(power)
         peak_freqs = []
-        for ch in range(psds.shape[0]):
-            max_idx = np.argmax(np.log10(m_psds[ch]))
-            peak_freqs.append(m_freqs[max_idx])
+        for ch in range(log_psds.shape[0]):
+            psd = log_psds[ch]
+            if smooth: 
+                kernel = gaussian(5,3)
+                psd = np.convolve(psd, kernel, 'same')
+            # Mask for the freq range
+            m_psd = psd[freq_mask]
+            peak_idxs = find_peaks(m_psd)[0]
+            max_peak = np.max(m_psd[peak_idxs])
+            peak_freqs.append(m_freqs[m_psd==max_peak][0])
         return peak_freqs
     
     def set_freq_range(self,freqs, psds, freq_range):
