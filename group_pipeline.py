@@ -5,9 +5,8 @@ import sys
 sys.path.append('C:/Users/Kamp/Documents/nid/scripts')
 from subject_pipeline import subject_pipeline
 from model_evaluation import model_evaluation
-from pprint import pprint 
 from fooof.utils.io import load_fooofgroup
-import matplotlib.pyplot as plt
+from joblib import Parallel, delayed
 
 class group_pipeline():
     """
@@ -47,8 +46,8 @@ class group_pipeline():
             self.data_files=all_data_files[:subjects]
             self.subject_ids=all_subject_ids[:subjects]
         elif type(subjects)==list:
-            self.data_files = [file for file, sub in zip(all_data_files, all_subject_ids) if sub in subjects]
-            self.subject_ids = subjects
+            subject_files = [(sub, file) for file, sub in zip(all_data_files, all_subject_ids) if sub in subjects]
+            self.subject_ids, self.data_files = zip(*subject_files)
         
         # Output
         self.out_folder = out_folder
@@ -56,7 +55,7 @@ class group_pipeline():
         self.eval_out = os.path.join(out_folder,'model_evaluation')
         self.result_file = os.path.join(out_folder, 'all_results.csv')
     
-    def run(self, evaluate=True):
+    def run(self, evaluate=True, n_jobs=3):
         """
         Function to run the group pipeline.
         :params evaluate - creates pdf file for each participant to evaluate the model fit.
@@ -64,27 +63,40 @@ class group_pipeline():
         # Create outfolders
         if not os.path.isdir(self.fooof_out):
             os.mkdir(self.fooof_out)
+
+        # Run subject pipelines in parallel        
+        results = Parallel(n_jobs=n_jobs)(delayed(self._run_subject_pipe)(subject_id, data_file) 
+                                          for subject_id, data_file in zip(self.subject_ids, self.data_files))
+        results_df = pd.concat(results)
+
+        # Run model evaluation in parallel
+        if evaluate:
+            if not os.path.isdir(self.eval_out):
+                os.mkdir(self.eval_out)
+            Parallel(n_jobs=n_jobs)(delayed(self._run_subject_eval)(subject_id, results_df)  
+                                    for subject_id in self.subject_ids)        
         
-        all_results = []
-        for subject_id, data_file in zip(self.subject_ids, self.data_files):
-            # Initialize pipeline and load data
-            pipe = subject_pipeline(data_file, subject_id)
-            # Run pipeline with set of parameters
-            subject_results, fg = pipe.run(self.params)    
-            # Save 
-            fg.save(file_name=f'{subject_id}_fg.json', file_path=self.fooof_out, save_results=True, save_settings=True, save_data=True)
-            all_results.append(subject_results)
-            # Evaluate
-            if evaluate:
-                if not os.path.isdir(self.eval_out):
-                    os.mkdir(self.eval_out)
-                fooof_file = os.path.join(self.fooof_out,f'{subject_id}_fg.json')
-                pdf_file = os.path.join(self.eval_out,f'{subject_id}_evaluation.pdf')
-                evaluation = model_evaluation(subject_id, subject_results, fooof_file, pdf_file);
-                evaluation.run()
-        
-        results_df = pd.concat(all_results)
         results_df.to_csv(self.result_file, index=False)
         return results_df
+    
+    def _run_subject_pipe(self, subject_id, data_file):
+        """
+        Function to run the subject pipeline for each subject
+        """
+        # Initialize pipeline and load data
+        pipe = subject_pipeline(data_file, subject_id)
+        # Run pipeline with set of parameters
+        subject_results, fg = pipe.run(self.params)    
+        # Save 
+        fooof_file = os.path.join(self.fooof_out,f'{subject_id}_fg.json')
+        fg.save(file_name=fooof_file, save_results=True, save_settings=True, save_data=True)
+        return subject_results
         
+    def _run_subject_eval(self, subject_id, results):
+        # Evaluate
+        fooof_file = os.path.join(self.fooof_out,f'{subject_id}_fg.json')
+        pdf_file = os.path.join(self.eval_out,f'{subject_id}_evaluation.pdf')
+        evaluation = model_evaluation(subject_id, results, fooof_file, pdf_file);
+        evaluation.run()
+
 

@@ -92,17 +92,15 @@ def plot_model_fit(results, meta_file, ax, color_outliers=False):
     if color_outliers:
         colors = cm.tab20.colors
         c = 0
-
     # Scatter plot
     for n, (pos, d) in enumerate(zip(positions,data)):
         d = d.to_numpy()
         x = np.random.randn(len(d))*0.01+pos
         ax.scatter(x=x, y=d, **scatter_params)
-        
         # Color outliers
         if color_outliers:
-            if n%2==0: outliers = np.sort(d)[-2:]
-            else: outliers = np.sort(d)[:2]
+            if n%2==0: outliers = np.sort(d[~np.isnan(d)])[-2:]
+            else: outliers = np.sort(d[~np.isnan(d)])[:2]
             for n, outlier in enumerate(outliers): 
                 outlier_idx = np.where(d == outlier)[0][0]
                 sub_id = results.loc[(results.model_error==outlier)|(results.model_rsquared==outlier), 'id'].iloc[0]
@@ -122,5 +120,3 @@ def plot_params(param_dict, ax):
     ax.set_yticks([])
     for side in ['top', 'bottom', 'left', 'right']:
         ax.spines[side].set_visible(False) # removes top and right spine
-
-

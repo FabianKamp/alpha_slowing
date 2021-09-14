@@ -32,7 +32,9 @@ class subject_pipeline():
         # Set up class and load data
         self.id = subject_id
         self.data_file = data_file
+        assert str(self.id) in str(self.data_file), 'Data filename does not contain subject number.'
         self.raw = self.load_data(data_file)
+
     
     def load_data(self, data_file):
         """

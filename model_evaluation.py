@@ -38,15 +38,17 @@ class model_evaluation():
             # Third page - model fit
             eval_fig = self.plot_model_eval(self.subject_id, self.results, self.fg)
             pdf.savefig()
-            # Fourth page - model params
-            param_fig = self.plot_params(self.subject_id, self.results, remove_outliers=False)
-            pdf.savefig()
-            # Fifth page - model params without outliers
-            param_fig = self.plot_params(self.subject_id, self.results, remove_outliers=True)
-            pdf.savefig()
-            # Last page - fooofed spectrum of models with largest params
+            # Fourth page - fooofed spectrum of models with largest params
             max_param_fig = self.plot_max_param_models(self.subject_id, self.results, self.fg)
             pdf.savefig()
+            # Fifth page - model params
+            param_fig = self.plot_params(self.subject_id, self.results, remove_outliers=False)
+            pdf.savefig()
+            # Last page - model params without outliers
+            param_fig = self.plot_params(self.subject_id, self.results, remove_outliers=True)
+            pdf.savefig()
+
+        plt.close('all')
     
     def plot_psds(self, subject_id, results, fg, freq_band):
         fig, ax = plt.subplots(1,2, figsize=(8,4), tight_layout=True, sharey=True)
@@ -134,7 +136,7 @@ class model_evaluation():
 
     # Model Evaluation
     def plot_model_eval(self, subject_id, results, fg):
-        fig, ax = plt.subplots(1,3, figsize=(12,4), tight_layout=True)
+        fig, ax = plt.subplots(1,3, figsize=(8,4), tight_layout=True)
         fig.suptitle(subject_id.capitalize(), fontsize=20)
         self.plot_model_err_rsq(results, ax[0])
         self.plot_max_err(results, fg, ax[1])
@@ -163,7 +165,7 @@ class model_evaluation():
         err = np.round(np.max(results.model_error),2)
         ind = np.argmax(results.model_error)
         ch_name = results.ch_names[ind]
-        ax.set_title(f'Largest Model Error: {err}\nChannel {ch_name}')
+        ax.set_title(f'Max. Model Error: {err}\nChannel {ch_name}')
         # fm plot
         fm = fg.get_fooof(ind=ind, regenerate=True)
         fm.plot(ax=ax, add_legend=False) 
@@ -172,7 +174,7 @@ class model_evaluation():
         rsq = np.round(np.min(results.model_rsquared),2)
         ind = np.argmin(results.model_rsquared)
         ch_name = results.ch_names[ind]
-        ax.set_title(f'Smallest Model R^2: {rsq}\nChannel {ch_name}')
+        ax.set_title(f'Min. Model R^2: {rsq}\nChannel {ch_name}')
         # fm plot
         fm = fg.get_fooof(ind=ind, regenerate=True)
         fm.plot(ax=ax, add_legend=False) 
@@ -180,14 +182,14 @@ class model_evaluation():
     # Parameter
     # Plot aperiodic_knee and aperiodic_exponent and aperiodic_offset
     def plot_params(self, subject_id, results, remove_outliers):
-        fig, ax = plt.subplots(1,3, tight_layout=True)
+        fig, ax = plt.subplots(1,3, figsize=(8,4), tight_layout=True)
         title = subject_id.capitalize() + int(remove_outliers)*' (prev. outliers removed)' 
         fig.suptitle(title, fontsize=20)
         results = results.loc[results.id==subject_id]
         params = ['model_aperiodic_offset', 'model_aperiodic_exponent', 'model_aperiodic_knee']
         
         for n, param in enumerate(params):
-            label = (' '.join([w.capitalize() for w in param.split('_')][1:]))
+            label = (' '.join([w.capitalize() for w in param.split('_')][2:]))
             self.plot_param(param, results, ax=ax[n], label=label, remove_outliers=remove_outliers)
             self._despine(ax[n]) 
         return fig
@@ -247,7 +249,7 @@ class model_evaluation():
 
     # Plot model spectra for models with largest parameter
     def plot_max_param_models(self, subject_id, results, fg):
-        fig, ax = plt.subplots(1,3, figsize=(15,5),tight_layout=True)
+        fig, ax = plt.subplots(1,3, figsize=(8,4),tight_layout=True)
         fig.suptitle(subject_id.capitalize(), fontsize=20)
         params = ['model_aperiodic_offset', 'model_aperiodic_exponent', 'model_aperiodic_knee']
         for n, param in enumerate(params):
@@ -257,8 +259,8 @@ class model_evaluation():
     def plot_max_param_model(self, param, results, fg, ax):
         ind = np.argmax(results[param])
         ch_name = results.ch_names[ind]
-        param_name = ' '.join([p.capitalize() for p in param.split('_')][1:])
-        ax.set_title(f'Largest Model Param: {param_name}\nChannel {ch_name}')
+        param_name = ' '.join([p.capitalize() for p in param.split('_')][2:])
+        ax.set_title(f'Max. Param: {param_name}\nChannel {ch_name}')
         # fm plot
         fm = fg.get_fooof(ind=ind, regenerate=True)
         fm.plot(ax=ax, add_legend=False) 
