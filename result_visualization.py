@@ -15,6 +15,16 @@ def load_meta_data(meta_file):
     meta_data['age_bin'] = [age_labels[age] for age in meta_data.Age]
     return meta_data
 
+def get_group_ids(results, meta_file):
+    """
+    Return young and old subject lists from meta data file
+    """
+    meta_data = load_meta_data(meta_file)
+    # Set up young and old group
+    young = meta_data.loc[(meta_data.id.isin(results.id))&(meta_data.age_bin<=4), 'id'].to_list()
+    old = meta_data.loc[(meta_data.id.isin(results.id))&(meta_data.age_bin>=5), 'id'].to_list()
+    return young, old
+
 def despine(ax):
     # Despine 
     for side in ['top', 'right']:
@@ -26,7 +36,7 @@ def despine(ax):
     ax.spines['bottom'].set_bounds((xmin, xmax))
 
 # Boxplot of alpha peaks
-def plot_group_box(results, meta_file, param, fig, ax, cbar=False, show_subjects=False):
+def plot_group_box(results, meta_file, param, fig, ax, cbar=False, show_subjects=False, despine_ax=True):
     meta_data = load_meta_data(meta_file)
     # Set up young and old group
     young = meta_data.loc[(meta_data.id.isin(results.id))&(meta_data.age_bin<=4), 'id']
@@ -72,7 +82,8 @@ def plot_group_box(results, meta_file, param, fig, ax, cbar=False, show_subjects
     # Axes + Ticks
     ax.set_xticklabels(**ticklabel_kwargs)
     ax.set_xlim(*xlim)
-    despine(ax)
+    if despine_ax:
+        despine(ax)
     return fig
 
 def plot_model_fit(results, meta_file, ax, color_outliers=False):
@@ -120,3 +131,23 @@ def plot_params(param_dict, ax):
     ax.set_yticks([])
     for side in ['top', 'bottom', 'left', 'right']:
         ax.spines[side].set_visible(False) # removes top and right spine
+
+def plot_box(results, params, labels, ax,  add_violin=True, add_strips=True): 
+    # Remove nan values 
+    results = results.dropna(subset=params)
+    data = [results[param] for param in params]
+    # Boxplot
+    positions=np.arange(len(params))
+    medianprops = dict(linewidth=2., color='tab:red')
+    ax.boxplot(data, positions=positions, showcaps=False, showfliers=False, widths=0.25, medianprops=medianprops)
+    # Add violin
+    if add_violin:
+        vp = ax.violinplot(data,positions,showextrema=False)
+        for violin in vp['bodies']:
+            violin.set_alpha(0.2) 
+    # Add lines 
+    if add_strips:
+        for d, position in zip(data,positions):
+            ax.scatter(x=np.repeat(position, len(d)), y=d, alpha=0.02, marker="_", color='k') 
+    ax.set_xticklabels(labels)
+    #despine(ax)
