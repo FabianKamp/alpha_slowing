@@ -6,6 +6,44 @@ import sys
 from mne.stats import bonferroni_correction, fdr_correction
 sys.path.append('C:/Users/Kamp/Documents/nid/scripts')
 
+def get_group_stats(data, params): 
+    """
+    Takes mean over all channels for each subject and calculates over all parameters
+        * mean difference
+        * t-statistics
+        * levene statistics
+        * welch t'test
+    between the old and young group. 
+    The data must contain the column "age_group". 
+
+    :params data - dataframe resulting from the group pipeline containing old and young subjects
+    :params list - params in the data for which the stats are calculated
+    :returns pd.DataFrame with the statistics
+    """
+    assert type(params)==list, "Params must be a list."
+    assert 'age_group' in data.columns, "age_group not in dataframe."
+    results = []
+    # Loop over parameters
+    for param in params:
+        assert param in data.columns, f"{param} not in dataframe."
+        data_nonan = data.dropna(subset=[param])
+        # Take subject mean over all channels for each subject
+        sub_means = data_nonan[['id','age_group', param]].groupby('id').mean().reset_index()
+        # Get young and old sample
+        young_sample = sub_means.loc[sub_means.age_group==1, param]
+        old_sample = sub_means.loc[sub_means.age_group==2, param]
+        # Get stats
+        mean_diff = np.mean(young_sample) - np.mean(old_sample)
+        t_stat, t_pval = ttest_ind(a=young_sample,b=old_sample)
+        welch_stat, welch_pval = ttest_ind(a=young_sample,b=old_sample, equal_var=False)
+        levene_stat, levene_pval = levene(young_sample, old_sample)
+        # Param stats
+        results.append({'param':param, 'mean_diff': mean_diff,
+                        't_stat':t_stat, 't_pval':t_pval,
+                        'welch_stat':welch_stat, 'welch_pval':welch_pval,
+                        'levene_stat':levene_stat, 'levene_pval':levene_pval})
+    return pd.DataFrame(results)
+
 def get_sensor_stats(data, params): 
     """
     Iterates over all parameters and calculates
