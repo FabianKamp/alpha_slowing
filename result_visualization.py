@@ -103,14 +103,10 @@ def plot_group_box(results, param, fig, ax, cbar=False, show_subjects=False, box
     ax.set_xlim(*xlim)
     return fig
 
-def plot_model_fit(results, meta_file, ax, color_outliers=False):
-    meta_data = load_meta_data(meta_file)
-    # Set up young and old group
-    young = meta_data.loc[(meta_data.id.isin(results.id))&(meta_data.age_bin<=4), 'id']
-    old = meta_data.loc[(meta_data.id.isin(results.id))&(meta_data.age_bin>=5), 'id']
-    # set up data
-    data = [results.loc[results.id.isin(young),'model_error'], results.loc[results.id.isin(young),'model_rsquared'], 
-            results.loc[results.id.isin(old),'model_error'], results.loc[results.id.isin(old),'model_rsquared']]
+def plot_model_fit(results, ax, color_outliers=False):
+    # Set up data
+    data = [results.loc[results.age_group==1,'model_error'], results.loc[results.age_group==1,'model_rsquared'], 
+            results.loc[results.age_group==2,'model_error'], results.loc[results.age_group==2,'model_rsquared']]
     # Scatter Settings
     positions = [0.1,0.3,0.7,0.9]
     ax.text(s='Young Subjects', x=0.2, y=ax.get_ylim()[-1]+0.1, ha='center', va='bottom')
@@ -137,7 +133,7 @@ def plot_model_fit(results, meta_file, ax, color_outliers=False):
     ax.set_xticks(positions)
     ax.set_xticklabels(['Error', 'R squared']*2)
     ax.set_yticks([0.,0.1,0.2,0.5,0.8,0.9,1])
-    ax.grid()    
+    ax.grid(alpha=0.3)    
     if color_outliers:
         ax.legend(bbox_to_anchor=(1,1))
 
@@ -233,6 +229,7 @@ def plot_topo_means(data, title, group, **mne_kwargs):
         * alpha peak frequency
         * alpha peak cf
         * spectral centroid
+        * centralized sc
     :param data - pd.DataFrame with descr stats
     :param title - figure title
     :param group - age_group 1|2
@@ -240,37 +237,61 @@ def plot_topo_means(data, title, group, **mne_kwargs):
     :returns figure
     """
     data = data.loc[data.age_group==group].copy()
-    fig = plt.figure(figsize=(18,8), tight_layout=True)
+    fig = plt.figure(figsize=(20,7), tight_layout=True)
     fig.suptitle(title, fontsize=25)
-    gs = gridspec.GridSpec(20, 45)
-    vmin, vmax = np.min(data['mean']),np.max(data['mean'])
+    gs = gridspec.GridSpec(20, 60)
+    
+    # Set vmin + vmax for colors in TopoMaps
+    data_mean = data.loc[data.param.isin(['alpha_peak_freqs', 'alpha_peak_cf', 'spectral_centroid']), 'mean']
+    vmin, vmax = np.min(data_mean),np.max(data_mean)
+    
     # Plot alpha peak frequency
     ax_topo = fig.add_subplot(gs[:-1,:15])
-    ax_cbar = fig.add_subplot(gs[-1,3:12])
+    ax_cbar = fig.add_subplot(gs[-1,4:11])
     p_data = data.loc[data.param=='alpha_peak_freqs', 'mean']
     ch_names = data.loc[data.param=='alpha_peak_freqs', 'ch_names']
     ax_topo, cbar = plot_topomap(ch_names=ch_names, data=p_data, ax=ax_topo, cax=ax_cbar, 
                                  vmin=vmin, vmax=vmax, **mne_kwargs)
-    ax_topo.set_title('Mean Alpha Peak Frequency', fontsize=20)
-    ax_cbar.tick_params(labelsize=20)
+    ax_topo.set_title('Mean Alpha\nPeak Frequency', fontsize=20)
+    cbar.set_ticks([np.round(vmin,2)+0.1, np.round(vmax,2)-0.1])
+    ax_cbar.tick_params(labelsize=15)
+    
     # Plot alpha cf
     ax_topo = fig.add_subplot(gs[:-1,15:30])
-    ax_cbar = fig.add_subplot(gs[-1,18:27])
+    ax_cbar = fig.add_subplot(gs[-1,19:26])
     p_data = data.loc[data.param=='alpha_peak_cf', 'mean']
     ch_names = data.loc[data.param=='alpha_peak_cf', 'ch_names']
     ax_topo, cbar = plot_topomap(ch_names=ch_names, data=p_data, ax=ax_topo, cax=ax_cbar, 
                                  vmin=vmin, vmax=vmax, **mne_kwargs)
-    ax_topo.set_title('Mean Alpha Peak CF', fontsize=20)
-    ax_cbar.tick_params(labelsize=20)
+    ax_topo.set_title('Mean Alpha\nPeak CF', fontsize=20)
+    cbar.set_ticks([np.round(vmin,2)+0.1, np.round(vmax,2)-0.1])
+    ax_cbar.tick_params(labelsize=15)
     # Plot alpha sc
-    ax_topo = fig.add_subplot(gs[:-1,30:])
-    ax_cbar = fig.add_subplot(gs[-1,33:42])
+    ax_topo = fig.add_subplot(gs[:-1,30:45])
+    ax_cbar = fig.add_subplot(gs[-1,34:41])
     p_data = data.loc[data.param=='spectral_centroid', 'mean']
     ch_names = data.loc[data.param=='spectral_centroid', 'ch_names']
     ax_topo, cbar = plot_topomap(ch_names=ch_names, data=p_data, ax=ax_topo, cax=ax_cbar, 
                                  vmin=vmin, vmax=vmax, **mne_kwargs)
-    ax_topo.set_title('Mean Spectral Centroid', fontsize=20)
-    ax_cbar.tick_params(labelsize=20)
+    ax_topo.set_title('Mean Spectral\nCentroid', fontsize=20)
+    cbar.set_ticks([np.round(vmin,2)+0.1, np.round(vmax,2)-0.1])
+    ax_cbar.tick_params(labelsize=15)
+
+    # Plot centralized sc
+    ## Set vmin + vmax for colors in TopoMap
+    data_mean = data.loc[data.param=='centralized_sc', 'mean']
+    vmin, vmax = np.min(data_mean),np.max(data_mean)
+
+    ax_topo = fig.add_subplot(gs[:-1,45:60])
+    ax_cbar = fig.add_subplot(gs[-1,49:56])
+    p_data = data.loc[data.param=='centralized_sc', 'mean']
+    ch_names = data.loc[data.param=='centralized_sc', 'ch_names']
+    ax_topo, cbar = plot_topomap(ch_names=ch_names, data=p_data, ax=ax_topo, cax=ax_cbar, 
+                                 vmin=vmin, vmax=vmax, **mne_kwargs)
+    ax_topo.set_title('Mean Centralized SC', fontsize=20)
+    cbar.set_ticks([np.round(vmin,2)+0.02, np.round(vmax,2)-0.02])
+    ax_cbar.tick_params(labelsize=15)
+    
     plt.subplots_adjust(hspace=0)
     return fig
 

@@ -73,7 +73,7 @@ class subject_pipeline():
         # Spectral Centroid
         scs = self.get_sc(freqs, psds, freq_range=params['sc_freq_range'])
         # Peak Centered SC
-        p_scs = self.get_peak_centered_sc(freqs, psds, alpha_peak_freqs, width=3)
+        p_scs, centralized_scs = self.get_peak_centered_sc(freqs, psds, alpha_peak_freqs, width=3)
 
         # Get Sensor positions
         r,a,s = self._get_sensor_pos(self.raw)
@@ -94,6 +94,7 @@ class subject_pipeline():
             'model_aperiodic_knee':fg_knee,
             'spectral_centroid':scs,
             'peak_centered_sc': p_scs,
+            'centralized_sc': centralized_scs,
             'sensor_pos_r': r,
             'sensor_pos_a': a,
             'sensor_pos_s': s
@@ -217,6 +218,7 @@ class subject_pipeline():
         :returns: peak centered spectral centroid
         """
         peak_centered_scs = []
+        centralized_scs = [] 
         for n, peak_freq in enumerate(peak_freqs):
             min_freq, max_freq = peak_freq-(width/2), peak_freq+(width/2)
             freq_mask = (freqs>min_freq)&(freqs<max_freq)
@@ -224,8 +226,12 @@ class subject_pipeline():
             m_psd = psds[n, freq_mask]
             m_freqs = freqs[freq_mask]
             # Compute sc
-            peak_centered_scs.append(np.dot(m_freqs,m_psd)/np.sum(m_psd))
-        return np.array(peak_centered_scs)
+            peak_centered_sc = np.dot(m_freqs,m_psd)/np.sum(m_psd)
+            peak_centered_scs.append(peak_centered_sc)
+            # Centralize 
+            centralized_sc = peak_centered_sc - peak_freq
+            centralized_scs.append(centralized_sc)
+        return np.array(peak_centered_scs), np.array(centralized_scs)
     
     def _get_sensor_pos(self,raw):
         # Get anterior-posterior sensor positions
