@@ -1,9 +1,10 @@
 from scipy.stats import ttest_ind, levene
-import os, glob, json
+import os, glob, json, sys
 import numpy as np
 import pandas as pd
-import sys
-from mne.stats import bonferroni_correction, fdr_correction
+import mne
+from sklearn.impute import SimpleImputer
+from sklearn.linear_model import LogisticRegression
 sys.path.append('C:/Users/Kamp/Documents/nid/scripts')
 
 def get_group_stats(data, params): 
@@ -85,9 +86,9 @@ def get_sensor_stats(data, params):
                                   'levene_stat':levene_stat, 'levene_pval':levene_pval})
         param_results = pd.DataFrame(param_results)
         # Multiple comparison correction
-        _, t_pval_bf = bonferroni_correction(param_results.t_pval, alpha=0.05)
+        _, t_pval_bf = mne.stats.bonferroni_correction(param_results.t_pval, alpha=0.05)
         param_results['t_pval_bf_corrected'] = t_pval_bf
-        _, t_pval_bf = fdr_correction(param_results.t_pval, alpha=0.05)
+        _, t_pval_bf = mne.stats.fdr_correction(param_results.t_pval, alpha=0.05)
         param_results['t_pval_fdr_corrected'] = t_pval_bf
 
         # Save to results
@@ -124,3 +125,63 @@ def get_descr_sensor_stats(data, params):
                             'max':np.max(young_sample),'min':np.min(young_sample)})
     results = np.round(pd.DataFrame(results),3)
     return results
+
+def get_adjacency(ch_names): 
+    """
+    Returns the adjacency mat for input channel names using the standard_1005 montage
+    """
+    montage = mne.channels.make_standard_montage(kind='standard_1005')
+    info = mne.create_info(ch_names, sfreq=2500, ch_types='eeg')
+    info.set_montage(montage)
+    adj, ch_names = mne.channels.find_ch_adjacency(info, ch_type='eeg')
+    return adj
+
+def permutation_cluster_test(results, param, pval): 
+    """
+    Performs permutation cluster test (t-test) over sensors for input parameter.
+    Missing data is replaced with the sensor mean across all subjects.
+    Returns clusters of sensors and corresponding p values
+
+    :param results - dataframe containing the results from the group-pipeline
+    :param param - string, column used for permutation cluster test over sensors
+    :param pval - pval that set the threshold for permutation cluster test
+    :returns ch_names, t-statistics, masks, p_vals
+    """
+    ch_names = list(results.ch_names.unique())
+    wide_data = results.pivot(index=['age_group','id'], columns='ch_names', values=param)[ch_names]
+    age_groups = wide_data.index.get_level_values(0)
+    sub_ids = wide_data.index.get_level_values(1)
+    # Replace missing values
+    imputer = SimpleImputer(missing_values=np.nan, strategy='mean')
+    X = imputer.fit_transform(wide_data)
+    # Split into young and old group
+    young_X = X[age_groups==1]
+    old_X = X[age_groups==2]
+    # Get adjacency matrix
+    adj = get_adjacency(ch_names)
+    # Compute permutation test
+    thres = scipy.stats.t.ppf(1-pval/2, df=len(sub_ids)-1)
+    results = mne.stats.permutation_cluster_test([young_X, old_X], adjacency=adj, threshold=thres, 
+                                                  stat_fun=mne.stats.ttest_ind_no_p, out_type='mask', tail=0)
+    # Results
+    ch_names = np.array(ch_names)
+    statistic = results[0]
+    masks = results[1]
+    p_vals = results[2]
+    return ch_names, statistic, masks, p_vals
+
+def logistic_regression(results, param): 
+    """
+    Performs a logistic regression. X is the matrix (n_subjects, parameter value for each channel) and y is the age_group array (n_subjects,). 
+    Missing data is replaced by the channel mean.
+    """
+    # Transfrom dataframe to wide format
+    wide_data = results.pivot(index=['id', 'age_group'], columns='ch_names', values=param)
+    # Replace missing data and set up X,y
+    imputer = SimpleImputer(missing_values=np.nan, strategy='mean')
+    X = imputer.fit_transform(wide_data)
+    y = wide_data.index.get_level_values('age_group').to_numpy()
+    # Logistic reg
+    log_reg = LogisticRegression(solver='liblinear', penalty='l2', max_iter=1000)
+    log_reg.fit(X,y)
+    return log_reg, X, y
