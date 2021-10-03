@@ -94,9 +94,10 @@ class group_pipeline():
         
     def _run_subject_eval(self, subject_id, results):
         # Evaluate
+        freq_band = self.params['alpha_band']
         fooof_file = os.path.join(self.fooof_out,f'{subject_id}_fg.json')
         pdf_file = os.path.join(self.eval_out,f'{subject_id}_evaluation.pdf')
-        evaluation = model_evaluation(subject_id, results, fooof_file, pdf_file);
+        evaluation = model_evaluation(subject_id, results, fooof_file, freq_band, pdf_file);
         evaluation.run()
 
 

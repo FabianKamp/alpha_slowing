@@ -17,20 +17,20 @@ class model_evaluation():
         3. Model Parameters
         4. Plot fooofed spectrum + model for models with highest parameter values
     """
-    def __init__(self, subject_id, results, fooof_file, pdf_file):
+    def __init__(self, subject_id, results, fooof_file, freq_band, pdf_file):
         self.subject_id = subject_id
         if type(results)!=pd.DataFrame:
             results = pd.read_csv(results)
         self.results = results.loc[results.id==subject_id].reset_index()
         self.fooof_file = fooof_file
         self.fg = load_fooofgroup(file_name=fooof_file)
-        self.freq_band = (8,13)
+        self.freq_band = freq_band
         self.pdf_file = pdf_file
 
     def run(self):
         with PdfPages(self.pdf_file) as pdf: 
             # First page - psds
-            psds_fig = self.plot_psds(self.subject_id, self.results, self.fg, self.freq_band)
+            psds_fig = self.plot_psds(self.subject_id, self.results, self.freq_band, self.fg)
             pdf.savefig()
             # Seconde page - results
             res_fig = self.plot_results(self.subject_id, self.results, self.fg)
@@ -50,11 +50,11 @@ class model_evaluation():
 
         plt.close('all')
     
-    def plot_psds(self, subject_id, results, fg, freq_band):
+    def plot_psds(self, subject_id, results, freq_band, fg):
         fig, ax = plt.subplots(1,2, figsize=(8,4), tight_layout=True, sharey=True)
         fig.suptitle(subject_id.capitalize(), fontsize=20)
         self.plot_raw_psds(results, fg, fig, ax[0])
-        self.plot_psds_peaks(results,fg,freq_band,fig,ax[1])
+        self.plot_psds_peaks(results,freq_band,fg,ax[1])
         return fig
     
     def plot_raw_psds(self,results, fg, fig, ax):
@@ -75,7 +75,7 @@ class model_evaluation():
         cbar.set_ticks(ticks); 
         cbar.set_ticklabels(['Posterior','Anterior'])
 
-    def plot_psds_peaks(self, results, fg, freq_band, fig, ax):
+    def plot_psds_peaks(self, results, freq_band, fg, ax):
         min_freq, max_freq = freq_band
         # Set up colormap
         norm = matplotlib.colors.Normalize(vmin=-80, vmax=80)
@@ -91,8 +91,9 @@ class model_evaluation():
             # Mark the peak frequencies
             peak_freq = results.alpha_peak_freqs[n]
             if np.isnan(peak_freq):
+                ax.plot(fg.freqs, psd, alpha=0.5, linewidth=3, color='red')
                 continue
-            ax.scatter(peak_freq, psd[np.isclose(fg.freqs,peak_freq)], marker='x', alpha=0.5, s=10, color=c)
+            ax.scatter(peak_freq, psd[np.isclose(fg.freqs,peak_freq)], marker='x', alpha=0.8, s=12, color=c)
         # color freq band
         ylim = ax.get_ylim()
         ax.fill_betweenx(ylim, x1=min_freq, x2=max_freq, alpha=0.2, color='tab:blue') # Fill alpha range

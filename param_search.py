@@ -32,12 +32,12 @@ class param_search():
         self.out_folder = out_folder
         self.pdf_file = os.path.join(out_folder, f'param_results.pdf')
 
-    def run(self, fooof_freq_range, peak_width_limits, aperiodic_mode):
+    def run(self, fooof_freq_range, peak_width_limits, aperiodic_mode, alpha_band=[(8, 13)]):
         """
         Perform parameter search
         """
         n = 0
-        for fq,pwl,am in product(fooof_freq_range,peak_width_limits,aperiodic_mode):
+        for fq,pwl,am, ab in product(fooof_freq_range,peak_width_limits,aperiodic_mode,alpha_band):
             param_out_folder = os.path.join(self.out_folder, f'params_{n:02d}')
             if not os.path.isdir(param_out_folder): 
                 os.mkdir(param_out_folder)
@@ -49,8 +49,8 @@ class param_search():
                                 'peak_width_limits': pwl,
                                 'max_n_peaks': 6,
                                 'min_peak_height': 0.1},
-                        'alpha_band': [8, 13],
-                        'sc_freq_range': [8, 13]}
+                        'alpha_band': ab,
+                        'sc_freq_range': ab}
             with open(param_file, 'w') as file: 
                 json.dump(params, file)
             # Run pipeline with param settings
@@ -60,6 +60,8 @@ class param_search():
             _ = group_pipe.run()
             # Analysis
             analysis_out = os.path.join(param_out_folder, 'analysis')
+            if not os.path.isdir(analysis_out): 
+                os.mkdir(analysis_out)
             analysis_pipe = analysis_pipeline(group_pipe.result_file, self.meta_file, analysis_out)
             analysis_pipe.run()
             print(f'{n:02d} parameter setting finished. Time: {np.round(time.time()-start_time)}s')

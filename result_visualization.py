@@ -5,19 +5,13 @@ import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 import matplotlib.gridspec as gridspec
 from matplotlib import cm
+import statsmodels.api as sm
 import mne
+import sys
+sys.path.append('C:/Users/Kamp/Documents/nid/scripts')
+from tools import load_meta_data
 
 # Helper Functions
-def load_meta_data(meta_file):
-    # Load meta data
-    meta_data = pd.read_csv(meta_file)
-    meta_data.rename(columns={'Unnamed: 0':'id'}, inplace=True)
-    # Label Age bins
-    age_labels = {'20-25':1, '25-30':2, '30-35':3, '35-40':4, '55-60':5, '60-65':6, '65-70':7, '70-75':8, '75-80':9}
-    meta_data['age_bin'] = [age_labels[age] for age in meta_data.Age]
-    meta_data['age_group'] = [1 if age_bin<=4 else 2 for age_bin in meta_data.age_bin]
-    return meta_data
-
 def get_group_ids(results, meta_file):
     """
     Return young and old subject lists from meta data file
@@ -29,6 +23,9 @@ def get_group_ids(results, meta_file):
     return young, old
 
 def despine(axes):
+    """
+    Despines input axes.
+    """
     # if input is only one axes
     if isinstance(axes,matplotlib.axes.Axes):
         axes = [axes]
@@ -57,8 +54,26 @@ def get_standard_eeg_positions(ch_names):
         positions.append(standard_1005_positions.loc[c].to_numpy())
     return np.vstack(positions)
 
+def plot_bar_nan(df, ax, thres=None):
+    x=np.arange(len(df))
+    ax.bar(x, height=df['count'], color='white',edgecolor='k')
+    ax.set_xticks(x)
+    ax.set_xticklabels(df.iloc[:,0], rotation=90)
+    ax.grid(alpha=0.5, axis='y')
+    if thres: 
+        outlier_heights = df.loc[df['count']>=thres, 'count']
+        x = x[df['count']>=thres]
+        ax.bar(x, outlier_heights, edgecolor='firebrick', color='white')
+    ax.set_ylabel('Missing Values', fontsize=15)
+    ax.set_xlabel(df.columns[0].replace('_', '. ').title(), fontsize=15)
+
 # Boxplot of alpha peaks
 def plot_group_box(results, param, fig, ax, cbar=False, show_subjects=False, boxwidths=0.05):
+    """
+    Splits data in young and old group and makes seperate boxplots for each group.
+    Plots each sensor as one data point (for each subjects ~61 points). 
+    If show_subjects is True, one boxplot for each subject is plotted. Else sensors are divided into "old" and "young" group.
+    """
     # Set up young and old group
     young = results.loc[results.age_group==1, 'id'].unique()
     old = results.loc[results.age_group==2, 'id'].unique()
@@ -104,6 +119,9 @@ def plot_group_box(results, param, fig, ax, cbar=False, show_subjects=False, box
     return fig
 
 def plot_model_fit(results, ax, color_outliers=False):
+    """
+    Scatterplot of the model error, r-squared for all subjects.
+    """
     # Set up data
     data = [results.loc[results.age_group==1,'model_error'], results.loc[results.age_group==1,'model_rsquared'], 
             results.loc[results.age_group==2,'model_error'], results.loc[results.age_group==2,'model_rsquared']]
@@ -138,6 +156,9 @@ def plot_model_fit(results, ax, color_outliers=False):
         ax.legend(bbox_to_anchor=(1,1))
 
 def plot_params(param_dict, ax):
+    """
+    Print Parameter Settings into axes
+    """
     s = '\n'.join([f'{k}:{val}' for k,val in param_dict.items()])
     ax.text(s=s,x=0.5,y=0.5,transform=ax.transAxes, ha='center', va='center', fontsize=10)
     ax.set_xticks([])
@@ -145,7 +166,10 @@ def plot_params(param_dict, ax):
     for side in ['top', 'bottom', 'left', 'right']:
         ax.spines[side].set_visible(False) # removes top and right spine
 
-def plot_box(results, params, labels, ax,  add_violin=True, add_strips=True): 
+def plot_param_box(results, params, labels, ax,  add_violin=True, add_strips=True): 
+    """
+    Boxplots across all parameters, using all sensors of all subjects without taking the mean.
+    """
     # Remove nan values 
     results = results.dropna(subset=params)
     data = [results[param] for param in params]
@@ -163,7 +187,6 @@ def plot_box(results, params, labels, ax,  add_violin=True, add_strips=True):
         for d, position in zip(data,positions):
             ax.scatter(x=np.repeat(position, len(d)), y=d, alpha=0.02, marker="_", color='k') 
     ax.set_xticklabels(labels)
-    #despine(ax)
 
 def plot_sub_means(results, param, ax, title='', annotate=False, **boxkwargs):
     """
@@ -189,6 +212,7 @@ def plot_sub_means(results, param, ax, title='', annotate=False, **boxkwargs):
     vp = ax.violinplot([young_sample, old_sample], positions=positions, showextrema=False)
     for violin in vp['bodies']:
         violin.set_alpha(0.2) 
+        violin.set_color('grey')
     if annotate:
         for sub in means.id: 
             y = means.loc[means.id==sub, param]
@@ -203,6 +227,87 @@ def plot_sub_means(results, param, ax, title='', annotate=False, **boxkwargs):
                    **scatterkwargs)
     ax.set_xticklabels(['Young', 'Old'])
     ax.set_title(title)
+    return ax
+
+def plot_sensor_box(results, params, add_violin=True, markers=False, annotate=False): 
+    """
+    For each sensor makes boxplots of the parameter values (alpha-peak-freq etc.) splitted into old and young group
+    :returns list of figures
+    """
+    # Remove nan values and split into age groups 
+    results = results.dropna(subset=params)
+    young = results.loc[results.age_group==1]
+    old = results.loc[results.age_group==2]
+    figs = []
+    for ch in sorted(results.ch_names.unique()):
+        fig, ax = plt.subplots(1,len(params), figsize=(4*len(params), 4), sharey=True, tight_layout=True)
+        fig.suptitle(ch, y=0.99, fontsize=20)
+        for n, param in enumerate(params):           
+            data = [young.loc[young.ch_names==ch, param], old.loc[old.ch_names==ch, param]]
+            # Boxplot
+            positions = [1,2] # young=1, old=2
+            medianprops = dict(linewidth=2., color='tab:red')
+            ax[n].boxplot(data, positions=positions, showcaps=False, showfliers=False, widths=0.25, medianprops=medianprops, vert=False)
+            # Add violin
+            if add_violin:
+                vp = ax[n].violinplot(data,positions,showextrema=False, vert=False)
+                for violin in vp['bodies']:
+                    violin.set_alpha(0.2) 
+                    violin.set_color('grey') 
+            # Add lines 
+            if markers:
+                for d, position in zip(data,positions):
+                    kwargs = dict(marker='o', color='white', edgecolor='k', linewidth=0.5, alpha=0.8, s=60)
+                    ax[n].scatter(y=np.repeat(position, len(d)), x=d, **kwargs) 
+            
+            if annotate:
+                for group in [young,old]:
+                    group = group.loc[group.ch_names==ch]
+                    for sub in group.id: 
+                        x = group.loc[group.id==sub, param]
+                        y = group.loc[group.id==sub, 'age_group']
+                        ax[n].annotate(text=sub, xy=(x,y), size=5, ha='center', va='center', rotation='vertical', alpha=0.5)
+            # Labeling
+            ax[n].set_title(param.replace('_',' ').title(), fontsize=15)
+            ax[n].set_xlabel('Frequency (Hz)', fontsize=15)
+            if param=='centralized_sc': 
+                ax[n].set_xlim(-0.5,0.5)
+            else:
+                ax[n].set_xlim(8,13)
+            ax[n].grid(alpha=0.4)
+        
+        ax[0].set_yticks([1,2])
+        ax[0].set_yticklabels(['Young', 'Old'], fontsize=15)
+        figs.append(fig)
+        plt.close('all')
+    return figs
+
+def plot_ecdf(results, param, ax, mean=False, label=None, percentiles=False, **scatterkwargs):
+    """
+    Plot the empirical cumulative distribution of the param values.
+    """
+    if mean: 
+        data = results.groupby(['id']).mean().reset_index()[param]
+    else: 
+        data = results[param]
+    x = np.sort(data)
+    y = np.arange(1, len(x)+1) / len(x)
+    ax.scatter(x, y, label=label, **scatterkwargs)
+    if percentiles: 
+        xlims = ax.get_xlim()
+        ylims = ax.get_ylim()
+        low, up = np.percentile(x,[25,75])
+        ax.plot([low,up], [0.25,0.75], linestyle=' ', marker='o', color='k', alpha=0.6)
+        linekwargs = dict(color='k', linestyle='solid', alpha=0.5, linewidth=1)
+        ax.vlines(low, ymin=ylims[0], ymax=0.25, **linekwargs)
+        ax.hlines(0.25, xmin=xlims[0], xmax=low, **linekwargs)
+        ax.vlines(up, ymin=ylims[0], ymax=0.75, **linekwargs)
+        ax.hlines(0.75, xmin=xlims[0], xmax=up, **linekwargs)
+        ax.set_xlim(xlims)
+        ax.set_ylim(ylims)
+    ax.set_ylabel('ECDF',  fontsize=15)
+    ax.set_xlabel(param.replace('_',' ').title(), fontsize=15)
+    ax.grid(alpha=0.5)
     return ax
 
 # Topomaps
@@ -295,13 +400,13 @@ def plot_topo_means(data, title, group, **mne_kwargs):
     plt.subplots_adjust(hspace=0)
     return fig
 
-def plot_topo_stats(data, param, title, **mne_kwargs):
+def plot_topo_tstats(data, param, title, mean_kwargs=dict(), t_kwargs=dict()):
     """
     Takes as input dataframe of group difference statistics. 
     Plots topomaps of the 
         * mean diff
-        * t'test pvalue
-    :param data - pd.DataFrame with descr stats
+        * t'test statistic
+    :param data - pd.DataFrame with stats
     :param param - str parameter, 'alpha_peak_frequency'|'alpha_peak_cf'|'spectral_centroid'
     :param title - figure title
     :param **mne_kwargs - keyword arguments that are passed to mne.viz.plot_topomap    
@@ -317,17 +422,80 @@ def plot_topo_stats(data, param, title, **mne_kwargs):
     ax_topo = fig.add_subplot(gs[:-1,:10])
     ax_cbar = fig.add_subplot(gs[-1,2:8])
     ax_topo, cbar = plot_topomap(ch_names=ch_names, data=data['mean_diff'], ax=ax_topo, cax=ax_cbar, 
-                                 show_names=True, cmap='RdBu_r', **mne_kwargs)
+                                 cmap='RdBu_r', **mean_kwargs)
     cbar.ax.tick_params(labelsize=15)
     ax_topo.set_title('Mean Difference', fontsize=20)
-    # T - Pval
+    # T - Stats
     ax_topo = fig.add_subplot(gs[:-1,10:])
     ax_cbar = fig.add_subplot(gs[-1,12:18])
-    vmin, vmax = 0.0, 0.2
+    vmin, vmax = -2.5,2.5
     data.loc[data.t_pval>vmax]=vmax # set upper limit for pval
-    mne_kwargs.update(vmin=vmin, vmax=vmax)
-    ax_topo, cbar = plot_topomap(ch_names=ch_names, data=data['t_pval'], ax=ax_topo, cax=ax_cbar, 
-                                 show_names=True, cmap='Reds_r', **mne_kwargs)
+    t_kwargs.update(vmin=vmin, vmax=vmax)
+    ax_topo, cbar = plot_topomap(ch_names=ch_names, data=data['t_stat'], ax=ax_topo, cax=ax_cbar, 
+                                 cmap='RdBu_r', **t_kwargs)
     cbar.ax.tick_params(labelsize=15)
-    ax_topo.set_title('P-value (uncorrected)', fontsize=20)
+    ax_topo.set_title('T-Statistic', fontsize=20)
     return fig
+
+def plot_topo_stats(stats, measure, title, **mne_kwargs):
+    """
+    Takes as input dataframe of sensor statistics. 
+    Plots topomaps of the measure for  
+        * alpha peak frequency
+        * alpha peak cf
+        * spectral centroid
+        * centralized sc
+    :param data - pd.DataFrame with sensor stats
+    :param measure - statistic measure, e.g. 'spearman_corr_age'
+    :param title - figure title
+    :param **mne_kwargs - keyword arguments that are passed to mne.viz.plot_topomap    
+    :returns figure
+    """
+    fig = plt.figure(figsize=(20,7), tight_layout=True)
+    fig.suptitle(title, fontsize=25)
+    gs = gridspec.GridSpec(20, 60)
+    
+    # Set vmin + vmax for colors in TopoMaps
+    stats_m = stats.loc[stats.param.isin(['alpha_peak_freqs', 'alpha_peak_cf', 'spectral_centroid', 'centralized_sc']), measure]
+    vmin, vmax = np.min(stats_m), np.max(stats_m)
+    if ('vmin' not in list(mne_kwargs.keys())):
+        mne_kwargs.update(vmin=vmin)
+    if ('vmmax' not in list(mne_kwargs.keys())):
+        mne_kwargs.update(vmax=vmax)
+    
+    # Plot topomap for each parammeter
+    for n, param in enumerate(['alpha_peak_freqs', 'alpha_peak_cf', 'spectral_centroid', 'centralized_sc']):
+        ax_topo = fig.add_subplot(gs[:-1,n*15:(n+1)*15]) 
+        ax_cbar = fig.add_subplot(gs[-1,n*15+4:(n+1)*15-4])
+        m_data = stats.loc[stats.param==param, measure]
+        ch_names = stats.loc[stats.param==param, 'ch_names']
+        ax_topo, cbar = plot_topomap(ch_names=ch_names, data=m_data, ax=ax_topo, cax=ax_cbar, 
+                                     **mne_kwargs)
+        ax_topo.set_title(' '.join(param.split('_')).title(), fontsize=20)
+        #cbar.set_ticks([np.round(vmin,2)+0.1, np.round(vmax,2)-0.1])
+        ax_cbar.tick_params(labelsize=15)    
+    plt.subplots_adjust(hspace=0)
+    return fig
+
+# Plotting Regressions
+def plot_scatter_obs(results, x_param, y_param, ax, mean=True):
+    if mean:
+        results = results[['id', x_param, y_param]].groupby('id').mean().reset_index()
+    kwargs = dict(facecolor='white', edgecolor='black', alpha=0.5, )
+    # subtracts one if plotting age group
+    ax.scatter(x=results[x_param]-int(x_param=='age_group'), y=results[y_param]-int(y_param=='age_group'), **kwargs)
+    ax.set_xlabel(' '.join(x_param.split('_')).title(), fontsize=15)
+    ax.set_ylabel(' '.join(y_param.split('_')).title(), fontsize=15)
+    ax.grid(alpha=0.5)
+
+def plot_scatter_obs_estim(regression_res, observations, ax):
+    kwargs = dict(edgecolor='k', facecolor='white', alpha=0.8)
+    ax.scatter(x=regression_res.fittedvalues,y=observations, **kwargs)
+    ax.text(s = f'r = {np.round(regression_res.rsquared,2)}', x=.7, y=.1, transform=ax.transAxes, fontsize=15,
+            va='bottom', ha='left', bbox=dict(boxstyle='round', facecolor='white', alpha=0.5, pad=0.4))
+    ax.grid(alpha=0.5)
+
+def plot_uni_regression(reg_res, pred_range, ax): 
+    x = np.linspace(pred_range[0], pred_range[1], 100)
+    y = reg_res.predict(sm.add_constant(x))
+    ax.plot(x,y, color='k', alpha=0.5)
