@@ -7,7 +7,7 @@ import matplotlib.gridspec as gridspec
 from matplotlib import cm
 import statsmodels.api as sm
 import mne
-import sys
+import sys, json
 sys.path.append('C:/Users/Kamp/Documents/nid/scripts')
 from tools import load_meta_data
 
@@ -54,6 +54,42 @@ def get_standard_eeg_positions(ch_names):
         positions.append(standard_1005_positions.loc[c].to_numpy())
     return np.vstack(positions)
 
+# Plot Sensor Positions
+def plot_layout(ch_names, ax, scatter=True, show_names=True, **scatter_kwargs):
+    positions = get_standard_eeg_positions(ch_names)
+    if show_names: 
+        for n, pos in enumerate(positions): 
+            ax.text(s=ch_names[n], x=pos[0], y=pos[1], va='center', ha='center',fontsize=8)
+    if scatter:
+        ax.scatter(x=positions[:,0], y=positions[:,1], **scatter_kwargs)
+
+def plot_channel_selection(sel_name, count_file, selection_file):
+    # Get Channels
+    count = pd.read_csv(count_file,index_col=0)
+    count.rename(columns={'total':'channel_total'}, index={'total':'subject_total'}, inplace=True)
+    all_channels = count.columns[:-1]
+    # Exclude channels that are normally noisy
+    exclude = count.loc[:, count.loc['subject_total']<len(count)-11].columns.to_list()
+    exclude = ['Fp1', 'Fp2', 'PO9', 'PO10', 'T7', 'T8', 'FT7', 'FT8', 'TP7', 'TP8'] + exclude
+    exclude = list(set(exclude))
+    # Get channel selection
+    with open(selection_file, 'r') as file: 
+        sel_dict = json.load(file)
+    
+    # Plot
+    fig, ax = plt.subplots(figsize=(7,6), tight_layout=True)
+    plot_layout(all_channels, ax, alpha=0)
+    plot_layout(exclude, ax, scatter=True, show_names=False, color='k', marker='x', s=100, label='Generally Excluded')
+    plot_layout(sel_dict[sel_name], ax, scatter=True, show_names=False, color='tab:red', alpha=0.5, label='Selection')
+    
+    # Cosmetics
+    ax.set_title(f"Selection {sel_name.split('_')[-1]}\nNo Channels: {len(sel_dict[sel_name])}", fontsize=15)
+    ax.legend(bbox_to_anchor=(1,1), fontsize=10)
+    ax.set_xticks([])
+    ax.set_yticks([])
+    return fig
+
+# Count
 def plot_bar_nan(df, ax, thres=None):
     x=np.arange(len(df))
     ax.bar(x, height=df['count'], color='white',edgecolor='k')
@@ -499,3 +535,4 @@ def plot_uni_regression(reg_res, pred_range, ax):
     x = np.linspace(pred_range[0], pred_range[1], 100)
     y = reg_res.predict(sm.add_constant(x))
     ax.plot(x,y, color='k', alpha=0.5)
+

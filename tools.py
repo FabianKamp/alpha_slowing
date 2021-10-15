@@ -103,8 +103,8 @@ def count_channels(data_folder=None, out_file=None, verbose=False):
     count = [[sub] + [int(ch in sub_channels) for ch in all_channels] for sub, sub_channels in channel_dict.items()]
     count_df = pd.DataFrame(count, columns=['id']+list(all_channels)).set_index('id')
     # Add counts
-    count_df.loc[:,'total'] = count_df.sum(axis=1)
-    count_df.loc['total',:] = count_df.sum(axis=0)
+    count_df.loc['subject_total',:] = count_df.sum(axis=0)
+    count_df.loc[:,'channel_total'] = count_df.sum(axis=1)
     if out_file: 
         count_df.to_csv(out_file, index=True)
     return count_df
@@ -113,12 +113,15 @@ def get_channel_names(data_file):
     raw = mne.io.read_raw_eeglab(data_file, verbose=False)
     return raw.ch_names
 
-def convert2mat(data_file, out_file, crop=None):
+def convert2mat(data_file, out_file, channels=None, crop=None):
     file_ending = data_file.split('\\')[-1]
     subject_id, condition = (file_ending.split('.')[0]).split('_')
     raw = mne.io.read_raw_eeglab(data_file, verbose=False)
+    # Exclude channels and crop dataset
     if crop:
         raw.crop(tmin=crop[0], tmax=crop[1])
+    if channels:
+        raw.pick(channels)
     data,time = raw[:]
     print(subject_id, data.shape)
     sfreq = raw.info['sfreq']
@@ -128,20 +131,80 @@ def convert2mat(data_file, out_file, crop=None):
                  sfreq=sfreq, ch_names=ch_names)
     scipy.io.savemat(out_file, mdict)
 
+def sample_convert2mat(sample_file):
+    # Load meta-data
+    meta_file = 'C:\\Users\\Kamp\\Documents\\nid\\lemon-dataset\\Behavioural_Data_MPILMBB_LEMON\\META_File_IDs_Age_Gender_Education_Drug_Smoke_SKID_LEMON.csv'
+    age_file = 'C:\\Users\\Kamp\\Documents\\nid\\lemon-dataset\\Behavioural_Data_MPILMBB_LEMON\\LEMON_BIDS_ID_AGE.csv'
+    name_match_file = 'C:\\Users\\Kamp\\Documents\\nid\\lemon-dataset\\Behavioural_Data_MPILMBB_LEMON\\name_match.csv'
+    meta_data = load_meta_data(meta_file, age_file=age_file, name_match_file=name_match_file)
+
+    # Get subjects with all channels
+    with open(sample_file, 'r') as file: 
+        sample_dict = json.load(file)
+    ids = sample_dict['subjects']
+    channels = sample_dict['channels']
+
+    # Check group sizes
+    old = len(meta_data.loc[(meta_data['id'].isin(ids))&(meta_data['age_group']==2)])
+    young = len(meta_data.loc[(meta_data['id'].isin(ids))&(meta_data['age_group']==1)])
+    print('Old Group: ', old, '\nYoung Group: ', young)
+
+    # Data folder
+    data_folder = 'D:\\nid\\lemon-dataset\\eeg-preprocessed'
+    # Out folder
+    out_folder = 'D:\\nid\\mat_files'
+
+    for subject in ids: 
+        subject_folder = os.path.join(data_folder, subject)
+        data_file = os.path.join(subject_folder, f'{subject}_EC.set')
+        out_file = os.path.join(out_folder, f'{subject}.mat')
+        convert2mat(data_file, out_file, channels=channels)
+
 def compute_margins(df): 
-    df.loc['subject_total',:] = df.iloc[:-1,:].sum(axis=0)
-    df.loc[:,'channel_total'] = df.iloc[:,:-1].sum(axis=1)
+    if df.index[-1]=='subject_total':
+        df.loc['subject_total',:] = df.iloc[:-1,:].sum(axis=0)
+    else: 
+        df.loc['subject_total',:] = df.iloc[:,:].sum(axis=0)
+    if df.columns[-1]=='channel_total':
+        df.loc[:,'channel_total'] = df.iloc[:,:-1].sum(axis=1)
+    else: 
+        df.loc[:,'channel_total'] = df.iloc[:,:].sum(axis=1)
 
 def exclude_channels(count, max_missing):
     # Exclude all Temporal channels
     excluded_channels = [ch for ch in count.columns[:-1] if ch.startswith('T')]
+    # Exclude channels that lack more than max_missing subjects
     exclude_idx = np.where(count.loc['subject_total']<len(count)-max_missing-1)[0]
     excluded_channels.extend(count.columns[exclude_idx])
     # Exclude
     count = count[[ch for ch in count.columns if ch not in excluded_channels]].copy()
     compute_margins(count)
-    # Exclude Subjects with less than 57 channels
+    # Exclude Subjects that don't have all channels
     count = count.loc[count.channel_total==np.max(count.channel_total.iloc[:-1])].copy()
     compute_margins(count)
-    subject_count = np.max(count.iloc[-1,:-1])
-    return count, set(excluded_channels), subject_count
+    return count, set(excluded_channels)
+
+def create_sample(sel_name, count_file, selection_file, out_file=None):
+    """
+    Takes the name of the channel selection in the selection file and creates a sample of subjects that posses all channels. 
+    If out_file is given saves the sample to json file.
+    returns list of subject, list of channels
+    """
+    count = pd.read_csv(count_file, index_col=0)
+    count.rename(columns={'total':'channel_total'}, index={'total':'subject_total'}, inplace=True)
+    with open(selection_file, 'r') as file: 
+        sel_dict = json.load(file)
+    # Select Channels and recompute margins
+    count = count[sel_dict[sel_name]]
+    compute_margins(count)
+    # Select Subjects and recompute margins
+    count = count.loc[count.channel_total==len(sel_dict[sel_name])]
+    compute_margins(count)
+    
+    # Save sample file
+    ch_names, subjects = sorted(count.columns[:-1].to_list()), count.index[:-1].to_list()
+    if out_file:
+        sample_dict = dict(ch_names=ch_names, subjects=subjects)
+        with open(out_file, 'w') as file: 
+            json.dump(sample_dict, file)            
+    return subjects, ch_names 

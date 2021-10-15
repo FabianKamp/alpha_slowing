@@ -24,11 +24,17 @@ class analysis_pipeline():
         * Plot boxplot of all sensors' parameter values
     """
 
-    def __init__(self, result_file, meta_file, out_folder, age_file=None, name_match_file=None):
+    def __init__(self, result_file, meta_file, out_folder, age_file=None, name_match_file=None, 
+                 subjects=None, channels=None):
         """
         Load result + metafile + exact ages and set up out folder
         """
         self.results = tools.load_results(result_file, meta_file, age_file, name_match_file)
+        # Only include subjects and channels in list
+        if subjects: 
+            self.results = self.results.loc[self.results['ids'].isin(subjects)]
+        if channels: 
+            self.results = self.results.loc[self.results['ch_names'].isin(channels)]
         self.out_folder = out_folder
 
     def run(self, params=None, show_subjects=False):
