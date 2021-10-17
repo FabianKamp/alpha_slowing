@@ -123,26 +123,25 @@ def convert2mat(data_file, out_file, channels=None, crop=None):
     if channels:
         raw.pick(channels)
     data,time = raw[:]
-    print(subject_id, data.shape)
     sfreq = raw.info['sfreq']
-    print(sfreq)
     ch_names = raw.ch_names
     mdict = dict(data=data, time=time, subject_id= subject_id, condition=condition, 
                  sfreq=sfreq, ch_names=ch_names)
     scipy.io.savemat(out_file, mdict)
 
-def sample_convert2mat(sample_file):
+def sample_convert2mat(sel_name):
     # Load meta-data
-    meta_file = 'C:\\Users\\Kamp\\Documents\\nid\\lemon-dataset\\Behavioural_Data_MPILMBB_LEMON\\META_File_IDs_Age_Gender_Education_Drug_Smoke_SKID_LEMON.csv'
-    age_file = 'C:\\Users\\Kamp\\Documents\\nid\\lemon-dataset\\Behavioural_Data_MPILMBB_LEMON\\LEMON_BIDS_ID_AGE.csv'
-    name_match_file = 'C:\\Users\\Kamp\\Documents\\nid\\lemon-dataset\\Behavioural_Data_MPILMBB_LEMON\\name_match.csv'
+    meta_file = 'D:\\nid\\lemon-dataset\\Behavioural_Data_MPILMBB_LEMON\\META_File_IDs_Age_Gender_Education_Drug_Smoke_SKID_LEMON.csv'
+    age_file = 'D:\\nid\\lemon-dataset\\Behavioural_Data_MPILMBB_LEMON\\LEMON_BIDS_ID_AGE.csv'
+    name_match_file = 'D:\\nid\\lemon-dataset\\name_match.csv'
     meta_data = load_meta_data(meta_file, age_file=age_file, name_match_file=name_match_file)
 
-    # Get subjects with all channels
+    # Get sample subjects and channels
+    sample_file = 'D:\\nid\\lemon-dataset\\samples.json'
     with open(sample_file, 'r') as file: 
         sample_dict = json.load(file)
-    ids = sample_dict['subjects']
-    channels = sample_dict['channels']
+    ids = sample_dict[sel_name]['subjects']
+    channels = sample_dict[sel_name]['ch_names']
 
     # Check group sizes
     old = len(meta_data.loc[(meta_data['id'].isin(ids))&(meta_data['age_group']==2)])
@@ -152,8 +151,10 @@ def sample_convert2mat(sample_file):
     # Data folder
     data_folder = 'D:\\nid\\lemon-dataset\\eeg-preprocessed'
     # Out folder
-    out_folder = 'D:\\nid\\mat_files'
-
+    out_folder = f'D:\\nid\\mat_files_{sel_name}'
+    if not os.path.isdir(out_folder): 
+        os.mkdir(out_folder)
+    
     for subject in ids: 
         subject_folder = os.path.join(data_folder, subject)
         data_file = os.path.join(subject_folder, f'{subject}_EC.set')
@@ -207,4 +208,20 @@ def create_sample(sel_name, count_file, selection_file, out_file=None):
         sample_dict = dict(ch_names=ch_names, subjects=subjects)
         with open(out_file, 'w') as file: 
             json.dump(sample_dict, file)            
-    return subjects, ch_names 
+    return subjects, ch_names
+
+def create_sample_meta(sel_name):
+    folder = 'D:\\nid\\lemon-dataset'
+    meta_file = os.path.join(folder, 'Behavioural_Data_MPILMBB_LEMON', 'META_File_IDs_Age_Gender_Education_Drug_Smoke_SKID_LEMON.csv')
+    name_match = os.path.join(folder, 'name_match.csv')
+    age_file = os.path.join(folder, 'Behavioural_Data_MPILMBB_LEMON', 'LEMON_BIDS_ID_AGE.csv')
+    meta_data = load_meta_data(meta_file, age_file=age_file, name_match_file=name_match)
+
+    sample_file = os.path.join(folder, 'samples.json')
+    with open(sample_file, 'r') as file: 
+        sample_dict = json.load(file)
+    subjects = sample_dict[sel_name]['subjects']
+    print(len(subjects))
+    meta_data = meta_data.loc[meta_data['id'].isin(subjects)]
+    meta_file = os.path.join(folder, 'meta_files', f'meta_{sel_name}.csv')
+    meta_data.to_csv(meta_file, index=False) 

@@ -45,8 +45,8 @@ class model_evaluation():
             param_fig = self.plot_params(self.subject_id, self.results, remove_outliers=False)
             pdf.savefig()
             # Last page - model params without outliers
-            param_fig = self.plot_params(self.subject_id, self.results, remove_outliers=True)
-            pdf.savefig()
+            # param_fig = self.plot_params(self.subject_id, self.results, remove_outliers=True)
+            # pdf.savefig()
 
         plt.close('all')
     
@@ -63,7 +63,7 @@ class model_evaluation():
         cmap = matplotlib.cm.get_cmap('viridis')
         for n in range(fg.power_spectra.shape[0]):
             c = cmap(norm(results.sensor_pos_a[n]))
-            ax.plot(fg.freqs, fg.power_spectra[n], color=c, alpha=0.2, linewidth=1);
+            ax.plot(fg.freqs, fg.power_spectra[n], color=c, alpha=0.2, linewidth=1)
         ax.grid(alpha=0.4)
         ax.set_ylabel('log(Power)')
         ax.set_yticklabels([])

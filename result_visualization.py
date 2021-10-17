@@ -226,7 +226,7 @@ def plot_param_box(results, params, labels, ax,  add_violin=True, add_strips=Tru
 
 def plot_sub_means(results, param, ax, title='', annotate=False, **boxkwargs):
     """
-    Plots the mean values of the param column for each subject. 
+    Plots the MEAN of the param column for each subject. 
     Splits age_group in seperate boxplots.
     :param results - pd.DataFrame
     :param param - column in pd.Dataframe which is plotted
@@ -253,6 +253,47 @@ def plot_sub_means(results, param, ax, title='', annotate=False, **boxkwargs):
         for sub in means.id: 
             y = means.loc[means.id==sub, param]
             x = means.loc[means.id==sub, 'age_group']
+            ax.annotate(text=sub, xy=(x,y), size=5, ha='center', va='center')
+    # Scatter
+    else: 
+        scatterkwargs = dict(marker='o', color='white', edgecolor='k', linewidth=0.5, alpha=0.8, s=60)
+        ax.scatter(x=np.ones(len(young_sample))*positions[0],y=young_sample, 
+                   **scatterkwargs)
+        ax.scatter(x=np.ones(len(old_sample))*positions[1],y=old_sample, 
+                   **scatterkwargs)
+    ax.set_xticklabels(['Young', 'Old'])
+    ax.set_title(title)
+    return ax
+
+def plot_sub_vars(results, param, ax, title='', annotate=False, **boxkwargs):
+    """
+    Plots the VARIANCE of the param column for each subject. 
+    Splits age_group in seperate boxplots.
+    :param results - pd.DataFrame
+    :param param - column in pd.Dataframe which is plotted
+    :param ax - axes
+    :param annotate - bool, if true plots the subject ids
+    :returns ax
+    """
+    assert 'age_group' in results.columns, 'age_group must be columns of dataframe.'
+    assert param in results.columns, f'{param} must be columns of dataframe.'
+    assert 'id' in results.columns, 'id must be columns of dataframe.'
+    
+    # Get subject variance
+    results = results.dropna(subset=[param])
+    vars = results.groupby(['id', 'age_group']).var()[param].reset_index()
+    young_sample, old_sample = vars[param].loc[vars.age_group==1], vars[param].loc[vars.age_group==2]
+    positions = [1,2]
+    # Box + Violin
+    ax.boxplot([young_sample, old_sample], positions=positions, showcaps=False, showfliers=False, medianprops=dict(linewidth=2., color='tab:red'), **boxkwargs)
+    vp = ax.violinplot([young_sample, old_sample], positions=positions, showextrema=False)
+    for violin in vp['bodies']:
+        violin.set_alpha(0.2) 
+        violin.set_color('grey')
+    if annotate:
+        for sub in vars['id']: 
+            y = vars.loc[vars['id']==sub, param]
+            x = vars.loc[vars['id']==sub, 'age_group']
             ax.annotate(text=sub, xy=(x,y), size=5, ha='center', va='center')
     # Scatter
     else: 
@@ -343,6 +384,7 @@ def plot_ecdf(results, param, ax, mean=False, label=None, percentiles=False, **s
         ax.set_ylim(ylims)
     ax.set_ylabel('ECDF',  fontsize=15)
     ax.set_xlabel(param.replace('_',' ').title(), fontsize=15)
+    ax.set_yticks([0.,0.25,0.5,0.75,1])
     ax.grid(alpha=0.5)
     return ax
 
@@ -524,15 +566,22 @@ def plot_scatter_obs(results, x_param, y_param, ax, mean=True):
     ax.set_ylabel(' '.join(y_param.split('_')).title(), fontsize=15)
     ax.grid(alpha=0.5)
 
-def plot_scatter_obs_estim(regression_res, observations, ax):
+def plot_scatter_obs_estim(reg_res, observations, ax):
     kwargs = dict(edgecolor='k', facecolor='white', alpha=0.8)
-    ax.scatter(x=regression_res.fittedvalues,y=observations, **kwargs)
-    ax.text(s = f'r = {np.round(regression_res.rsquared,2)}', x=.7, y=.1, transform=ax.transAxes, fontsize=15,
+    ax.scatter(x=reg_res.fittedvalues, y=observations, **kwargs)
+    ax.text(s = f'r-sq.={np.round(reg_res.rsquared,2)}', x=.1, y=.8, transform=ax.transAxes, fontsize=15,
             va='bottom', ha='left', bbox=dict(boxstyle='round', facecolor='white', alpha=0.5, pad=0.4))
     ax.grid(alpha=0.5)
 
-def plot_uni_regression(reg_res, pred_range, ax): 
+def plot_uni_regression(reg_res, pred_range, ax, label=None): 
     x = np.linspace(pred_range[0], pred_range[1], 100)
     y = reg_res.predict(sm.add_constant(x))
+    if label=='linear':
+        ax.text(s = f'r-sq.={np.round(reg_res.rsquared,2)}', x=.6, y=.8, transform=ax.transAxes, fontsize=15,
+                va='bottom', ha='left', bbox=dict(boxstyle='round', facecolor='white', alpha=0.5, pad=0.4))
+    if label=='logistic':
+        ax.text(s = f'r-sq.={np.round(reg_res.prsquared,2)}', x=.6, y=.8, transform=ax.transAxes, fontsize=15,
+                va='bottom', ha='left', bbox=dict(boxstyle='round', facecolor='white', alpha=0.5, pad=0.4))
+    
     ax.plot(x,y, color='k', alpha=0.5)
 

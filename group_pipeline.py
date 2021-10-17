@@ -7,6 +7,7 @@ from subject_pipeline import subject_pipeline
 from model_evaluation import model_evaluation
 from fooof.utils.io import load_fooofgroup
 from joblib import Parallel, delayed
+from matplotlib.backends.backend_pdf import PdfPages
 
 class group_pipeline():
     """
@@ -20,6 +21,7 @@ class group_pipeline():
     2. Apply model evaluation
         * Input results + FOOOFobject file
         * Create PDF with results + model fits and parameters for each subject
+        * Create PDF with all psds for all subjects
 
     Saves result in .csv file with data from all participants.
     """
@@ -63,20 +65,25 @@ class group_pipeline():
         # Create outfolders
         if not os.path.isdir(self.fooof_out):
             os.mkdir(self.fooof_out)
-
         # Run subject pipelines in parallel        
         results = Parallel(n_jobs=n_jobs)(delayed(self._run_subject_pipe)(subject_id, data_file) 
                                           for subject_id, data_file in zip(self.subject_ids, self.data_files))
         results_df = pd.concat(results)
+        # Save results to file
+        results_df.to_csv(self.result_file, index=False)
 
         # Run model evaluation in parallel
         if evaluate:
             if not os.path.isdir(self.eval_out):
                 os.mkdir(self.eval_out)
             Parallel(n_jobs=n_jobs)(delayed(self._run_subject_eval)(subject_id, results_df)  
-                                    for subject_id in self.subject_ids)        
-        
-        results_df.to_csv(self.result_file, index=False)
+                                                for subject_id in self.subject_ids)   
+            #Save psds figs into one file
+            #psds_file = os.path.join(self.eval_out, 'all_psds.pdf')
+            #with PdfPages(psds_file) as file:
+            #    for fig in psds_figs: 
+            #        file.savefig(fig)
+
         return results_df
     
     def _run_subject_pipe(self, subject_id, data_file):
@@ -97,7 +104,9 @@ class group_pipeline():
         freq_band = self.params['alpha_band']
         fooof_file = os.path.join(self.fooof_out,f'{subject_id}_fg.json')
         pdf_file = os.path.join(self.eval_out,f'{subject_id}_evaluation.pdf')
-        evaluation = model_evaluation(subject_id, results, fooof_file, freq_band, pdf_file);
+        evaluation = model_evaluation(subject_id, results, fooof_file, freq_band, pdf_file)
         evaluation.run()
+        #psds_fig = evaluation.plot_psds(evaluation.subject_id, evaluation.results, eval.freq_band, self.fg)
+        #return psds_fig
 
 

@@ -32,7 +32,7 @@ class analysis_pipeline():
         self.results = tools.load_results(result_file, meta_file, age_file, name_match_file)
         # Only include subjects and channels in list
         if subjects: 
-            self.results = self.results.loc[self.results['ids'].isin(subjects)]
+            self.results = self.results.loc[self.results['id'].isin(subjects)]
         if channels: 
             self.results = self.results.loc[self.results['ch_names'].isin(channels)]
         self.out_folder = out_folder
@@ -48,13 +48,17 @@ class analysis_pipeline():
         * Compute permutation cluster test
         * Plot TopoMaps of descr and comparative sensor statistics
         * Plot boxplot of all sensors' parameter values
+        * Compute Multi and univariate rgression
+        * Plot Regressions
         
         Creates pdf files in out_folder:
         + na_counts.pdf
         + summary_sensors.pdf
-        + summary_subjects.pdf
+        + summary_subject_mean.pdf
+        + summary_subject_variance.pdf
         + summary_topomaps.pdf
         + all_sensors.pdf
+        + summary_regression.pdf
 
         Creates .csv files in out folder: 
         + group_stats.csv
@@ -88,10 +92,16 @@ class analysis_pipeline():
         self.save_figures(pdf_file, figs)
 
         # Subject summary
-        figs = self.plot_subjects(self.results, show_subjects)
-        pdf_file = os.path.join(self.out_folder, 'summary_subjects.pdf')
+        ## Means
+        figs = self.plot_subject_means(self.results, show_subjects)
+        pdf_file = os.path.join(self.out_folder, 'summary_subject_means.pdf')
         self.save_figures(pdf_file, figs)
         
+        ## Variance
+        figs = self.plot_subject_vars(self.results)
+        pdf_file = os.path.join(self.out_folder, 'summary_subject_vars.pdf')
+        self.save_figures(pdf_file, figs)
+
         ## Compute group stats
         group_stats = sa.get_group_stats(self.results, params)
         group_stats_file = os.path.join(self.out_folder, 'group_stats.csv')
@@ -125,7 +135,7 @@ class analysis_pipeline():
         self.save_figures(pdf_file, figs)
 
         # Regression
-        ## Univariate regressions
+        ## Compute Univariate regressions
         uni_lin_reg = sa.univariate_lin_regression(self.results,params) # returns dictionary {param:reg_result} 
         uni_log_reg = sa.univariate_log_regression(self.results,params)
         ## Save as text file
@@ -140,10 +150,8 @@ class analysis_pipeline():
         ## Plot
         lin_fig = self.plot_uni_regression(self.results, uni_lin_reg, label='linear')
         log_fig = self.plot_uni_regression(self.results, uni_log_reg, label='logistic')
-        pdf_file = os.path.join(self.out_folder, 'univariate_regressions.pdf')
-        self.save_figures(pdf_file, figs=[lin_fig, log_fig])
 
-        ## Multivariate regressions
+        ## Compute Multivariate regressions
         multi_lin_reg = sa.multivariate_lin_regression(self.results, params)
         ## Save as text/csv files
         for param, (res, coeff) in multi_lin_reg.items():
@@ -151,11 +159,16 @@ class analysis_pipeline():
             with open(file_path, 'w') as file: 
                 file.write(res.summary().as_text())
             coeff.to_csv(os.path.join(reg_folder, f'{param}_multivariate_lin_regression_coeff.csv'), index=False)
+        ## Plot 
+        coeff_topo, mult_lin_fig = self.plot_multi_regression(self.results, multi_lin_reg, label='linear')
         
-        # Plot 
-        multi_lin_figs = self.plot_multi_regression(self.results, multi_lin_reg, label='linear')
-        pdf_file = os.path.join(self.out_folder, 'mulivariate_regressions.pdf')
-        self.save_figures(pdf_file, multi_lin_figs)
+        # Save Regression Plots
+        pdf_file = os.path.join(self.out_folder, 'regressions_summary.pdf')
+        self.save_figures(pdf_file, figs=[lin_fig, log_fig, mult_lin_fig])
+        
+        # Save M. Regression Coefficients - Topomap
+        pdf_file = os.path.join(self.out_folder, 'coefficients_topomap.pdf')
+        self.save_figures(pdf_file, coeff_topo)
 
     def plot_count_na(self, results, params, thres=None): 
         figs = []
@@ -197,7 +210,7 @@ class analysis_pipeline():
         _ = viz.plot_group_box(results, 'alpha_peak_freqs', fig3, ax[0], boxwidths=0.1)
         ax[0].set_title('Alpha Peak Frequency')
         _ = viz.plot_group_box(results, 'alpha_peak_cf', fig3, ax[1], cbar=True, boxwidths=0.1)
-        ax[1].set_title('Alpha Peak CF');
+        ax[1].set_title('Alpha Peak CF')
         plt.subplots_adjust(hspace=0)
         viz.despine(ax)
 
@@ -206,7 +219,7 @@ class analysis_pipeline():
         _ = viz.plot_group_box(results, 'spectral_centroid', fig4, ax[0], boxwidths=0.1 )
         ax[0].set_title('Spectral Centroid')
         _ = viz.plot_group_box(results, 'peak_centered_sc', fig4, ax[1], cbar=True, boxwidths=0.1)
-        ax[1].set_title('Peak Centered SC');
+        ax[1].set_title('Peak Centered SC')
         plt.subplots_adjust(hspace=0)
         viz.despine(ax)
 
@@ -219,7 +232,7 @@ class analysis_pipeline():
         plt.close('all')
         return [fig1, fig2, fig3, fig4, fig5]
     
-    def plot_subjects(self, results, show_subjects):
+    def plot_subject_means(self, results, show_subjects):
         """
         Plot subject sensor averages of both groups.
         """
@@ -293,6 +306,39 @@ class analysis_pipeline():
         plt.close('all')
         return figs
     
+    def plot_subject_vars(self, results): 
+        """
+        Plot subject sensor variance for both groups.
+        """
+        figs = []
+        # Box-plots of subject variances
+        ## Alpha peak
+        boxkwargs = dict(showmeans=True, meanline=True, meanprops=dict(color='k'))
+        fig, axes = plt.subplots(1,2,figsize=(10,5), sharey=True, tight_layout=True)
+        _ = viz.plot_sub_vars(results, 'alpha_peak_freqs', title='Alpha Peak Frequency', ax=axes[0], annotate=False, **boxkwargs)
+        _ = viz.plot_sub_vars(results, 'alpha_peak_cf', title='Alpha Peak Central Frequency', ax=axes[1], annotate=False, **boxkwargs)
+        viz.despine(axes)
+        figs.append(fig)
+
+        ## Spectral centroid
+        fig, axes = plt.subplots(1,2,figsize=(10,5),  sharey=True, tight_layout=True)
+        _ = viz.plot_sub_vars(results, 'spectral_centroid', title='Spectral Centroid', ax=axes[0], annotate=False, **boxkwargs)
+        _ = viz.plot_sub_vars(results, 'peak_centered_sc', title='Peak Centered Spectral Centroid', ax=axes[1], annotate=False, **boxkwargs)
+        viz.despine(axes)
+        figs.append(fig)
+
+        # Centralized SC
+        ## Subject averages and all subjects sensors
+        fig,ax = plt.subplots(figsize=(5,5),  tight_layout=True)
+        _ = viz.plot_sub_vars(results, 'centralized_sc', title='Centralized Spectral Centroid', ax=ax, annotate=False, **boxkwargs)
+        plt.subplots_adjust(hspace=0)
+        viz.despine(ax)
+        figs.append(fig)
+
+        plt.close('all')
+        return figs
+
+    
     def plot_stat_topomaps(self, descr_stats, stats, sensor_clusters):
         """
         Plot topomaps of descriptive and comparative sensor stats.
@@ -356,7 +402,7 @@ class analysis_pipeline():
             dependent_var, pred_range = settings[label]
             if param=='centralized_sc': pred_range = [-0.5,0.5]
             viz.plot_scatter_obs(results, x_param=param, y_param=dependent_var, ax=ax[n])
-            viz.plot_uni_regression(reg_res, pred_range, ax[n])
+            viz.plot_uni_regression(reg_res, pred_range, ax[n], label=label)
             ax[n].set_title(f'Univariate {label.title()} Regression', fontsize=15, pad=20)
         plt.close('all')
         return fig
@@ -372,7 +418,7 @@ class analysis_pipeline():
         # Scatter
         fig_scatter, ax_sc = plt.subplots(1,n, figsize=(n*5, 5), tight_layout=True)
         if n==1: ax_sc = [ax_sc]
-        fig_scatter.suptitle('True vs. Estimated Values', fontsize=15)
+        fig_scatter.suptitle('Multivariate Linear Regression\nTrue vs. Estimated Values', fontsize=15)
         for n, (param, values) in enumerate(reg_results.items()):
             reg_result, coeff = values 
             # Topo
@@ -386,7 +432,7 @@ class analysis_pipeline():
             ax_sc[n].set_xlabel('Estimated Age', fontsize=15)
             ax_sc[n].set_title(param.replace('_',' ').title(), fontsize=15)
         plt.close('all')
-        return [fig_topo, fig_scatter]
+        return fig_topo, fig_scatter
 
     def save_figures(self, pdf_file, figs):
         # If only one figure is passed
